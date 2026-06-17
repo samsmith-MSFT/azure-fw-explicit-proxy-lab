@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Azure Firewall Explicit Proxy Lab - Architecture</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : true;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg:#FAF9F5; --surface:#FFFFFF; --surface2:#F0EEE6;
+    --ink:#141413; --body:#3D3D3A; --muted:#87867F;
+    --line:#D1CFC5; --line-soft:#E6E3DA;
+    --clay:#D97757; --clay-soft:rgba(217,119,87,0.10);
+    --olive:#788C5D; --olive-soft:rgba(120,140,93,0.12);
+    --blue:#5B7E96; --blue-soft:rgba(91,126,150,0.12);
+    --gold:#C9A45C;
+    --go:#3F9A52; --stop:#C5524A;
+    --zone:rgba(20,20,19,0.025); --zone-line:#D1CFC5;
+    --serif:ui-serif,Georgia,"Times New Roman",serif;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  html.dark {
+    --bg:#141413; --surface:#1F1F1D; --surface2:#2A2A28;
+    --ink:#FAF9F5; --body:#D1CFC5; --muted:#87867F;
+    --line:#3D3D3A; --line-soft:#2A2A28;
+    --clay:#E48A6E; --clay-soft:rgba(228,138,110,0.14);
+    --olive:#9DB07C; --olive-soft:rgba(157,176,124,0.16);
+    --blue:#7FA3BC; --blue-soft:rgba(127,163,188,0.16);
+    --gold:#D4B36F;
+    --go:#6FBF7A; --stop:#E0726A;
+    --zone:rgba(250,249,245,0.03); --zone-line:#3D3D3A;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; }
+  body {
+    background:var(--bg); color:var(--body); font-family:var(--sans);
+    -webkit-font-smoothing:antialiased; display:flex; flex-direction:column; overflow:hidden;
+  }
+  .bar {
+    display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+    padding:12px 20px; border-bottom:1px solid var(--line-soft); flex:none;
+  }
+  .bar h1 { font-family:var(--serif); font-weight:500; font-size:19px; color:var(--ink); letter-spacing:-0.01em; }
+  .bar .sub { font-family:var(--mono); font-size:10.5px; color:var(--muted); letter-spacing:0.06em; text-transform:uppercase; }
+  .spacer { flex:1; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip {
+    font-family:var(--mono); font-size:11px; letter-spacing:0.04em;
+    padding:5px 11px; border:1px solid var(--line); border-radius:999px;
+    background:transparent; color:var(--muted); cursor:pointer; transition:all .15s ease;
+  }
+  .chip:hover { color:var(--ink); border-color:var(--muted); }
+  .chip.on { background:var(--ink); border-color:var(--ink); color:var(--bg); }
+  #themeToggle {
+    font-family:var(--mono); font-size:10.5px; text-transform:uppercase; letter-spacing:0.08em;
+    padding:5px 10px; border:1px solid var(--line); border-radius:6px;
+    background:transparent; color:var(--muted); cursor:pointer;
+  }
+  #themeToggle:hover { color:var(--ink); border-color:var(--muted); }
+
+  .stage { flex:1; position:relative; min-height:0; }
+  .stage svg { position:absolute; inset:0; width:100%; height:100%; display:block; }
+
+  .zone rect { fill:var(--zone); stroke:var(--zone-line); stroke-width:1; stroke-dasharray:5 5; }
+  .zone .ztitle { font-family:var(--mono); font-size:12px; letter-spacing:0.1em; text-transform:uppercase; fill:var(--muted); }
+  .zone .zsub { font-family:var(--mono); font-size:10.5px; fill:var(--muted); opacity:0.75; }
+
+  .node { cursor:pointer; }
+  .node rect { fill:var(--surface); stroke:var(--line); stroke-width:1.5; transition:stroke .15s ease, filter .15s ease; }
+  .node:hover rect { stroke:var(--muted); }
+  .node.sel rect { stroke:var(--clay) !important; stroke-width:2; }
+  .node .t { font-family:var(--sans); font-size:14.5px; font-weight:600; fill:var(--ink); pointer-events:none; }
+  .node .m { font-family:var(--mono); font-size:11px; fill:var(--muted); pointer-events:none; }
+  .node .k { font-family:var(--mono); font-size:10px; letter-spacing:0.08em; text-transform:uppercase; fill:var(--clay); pointer-events:none; }
+  .node.fw rect { fill:var(--clay-soft); stroke:var(--clay); }
+  .node.client rect { fill:var(--blue-soft); stroke:var(--blue); }
+  .node.mgmt rect { fill:var(--olive-soft); stroke:var(--olive); }
+  .node.ext rect { stroke-dasharray:6 3; }
+
+  .edge { stroke:var(--muted); stroke-width:1.6; fill:none; marker-end:url(#a-mut); transition:opacity .2s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray:5 4; }
+  .edge.thick { stroke-width:2.2; }
+  .elbl { font-family:var(--mono); font-size:10.5px; fill:var(--muted); transition:opacity .2s ease; }
+
+  .stage.flowing .edge { opacity:0.13; }
+  .stage.flowing .elbl { opacity:0.13; }
+  .stage.flowing .node { opacity:0.30; }
+  .stage.flowing .zone { opacity:0.45; }
+  .stage.flowing { --flow:var(--blue); }
+  .stage.flowing.tone-go { --flow:var(--go); }
+  .stage.flowing.tone-stop { --flow:var(--stop); }
+  .stage.flowing .edge.lit {
+    opacity:1; stroke:var(--flow); marker-end:url(#a-flow);
+    stroke-dasharray:7 5; animation:march 0.9s linear infinite;
+  }
+  .stage.flowing .elbl.lit { opacity:1; fill:var(--flow); }
+  .stage.flowing .node.lit { opacity:1; }
+  .stage.flowing .node.lit rect { stroke:var(--flow); }
+  #a-flow-path { fill:var(--blue); }
+  .stage.flowing.tone-go #a-flow-path { fill:var(--go); }
+  .stage.flowing.tone-stop #a-flow-path { fill:var(--stop); }
+  @keyframes march { to { stroke-dashoffset:-12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation:none; } }
+
+  .card {
+    position:absolute; max-width:360px;
+    background:var(--surface); border:1px solid var(--line); border-radius:12px;
+    padding:14px 16px; box-shadow:0 6px 24px rgba(0,0,0,0.08);
+  }
+  #detail { right:16px; bottom:16px; width:340px; }
+  #detail .dt { font-family:var(--serif); font-size:17px; color:var(--ink); margin-bottom:3px; }
+  #detail .dm { font-family:var(--mono); font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:9px; }
+  #detail .db { font-size:13px; line-height:1.5; color:var(--body); }
+  #detail .db code { font-family:var(--mono); font-size:12px; background:var(--surface2); padding:1px 5px; border-radius:4px; }
+  #flowcap { left:16px; bottom:16px; width:330px; opacity:0; transform:translateY(6px); transition:all .2s ease; pointer-events:none; }
+  #flowcap.show { opacity:1; transform:none; }
+  #flowcap .fn { font-family:var(--serif); font-size:15px; color:var(--ink); margin-bottom:8px; }
+  #flowcap ol { margin-left:16px; font-size:12.5px; line-height:1.5; color:var(--body); }
+  #flowcap ol code { font-family:var(--mono); font-size:11.5px; background:var(--surface2); padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+  <div class="bar">
+    <h1>Azure Firewall Explicit Proxy Lab</h1>
+    <span class="sub">East US 2 &middot; preview feature</span>
+    <span class="spacer"></span>
+    <div class="chips">
+      <button class="chip on" data-flow="all">All</button>
+      <button class="chip" data-flow="allow">Allowed request</button>
+      <button class="chip" data-flow="deny">Denied request</button>
+      <button class="chip" data-flow="mgmt">Management</button>
+    </div>
+    <button id="themeToggle">Theme</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <svg viewBox="0 0 1440 820" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/>
+        </marker>
+        <marker id="a-flow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path id="a-flow-path" d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+
+      <!-- zone: vnet -->
+      <g class="zone">
+        <rect x="40" y="150" width="1180" height="600" rx="16"/>
+        <text class="ztitle" x="64" y="184">vnet-fwlab</text>
+        <text class="zsub" x="64" y="202">10.0.0.0/16</text>
+      </g>
+      <!-- zone: bastion subnet -->
+      <g class="zone">
+        <rect x="80" y="250" width="300" height="430" rx="14"/>
+        <text class="zsub" x="230" y="668" text-anchor="middle">AzureBastionSubnet &middot; 10.0.1.0/26</text>
+      </g>
+      <!-- zone: workload subnet -->
+      <g class="zone">
+        <rect x="430" y="250" width="300" height="430" rx="14"/>
+        <text class="zsub" x="580" y="668" text-anchor="middle">snet-workload &middot; 10.0.2.0/24</text>
+      </g>
+      <!-- zone: firewall subnet -->
+      <g class="zone">
+        <rect x="800" y="250" width="380" height="430" rx="14"/>
+        <text class="zsub" x="990" y="668" text-anchor="middle">AzureFirewallSubnet &middot; 10.0.0.0/26</text>
+      </g>
+
+      <!-- edges -->
+      <path class="edge" id="e-admin-bastion" d="M230,118 L230,384"/>
+      <path class="edge" id="e-bastion-vm" d="M350,430 L450,430"/>
+      <path class="edge thick" id="e-vm-fw" d="M710,430 L875,430"/>
+      <path class="edge thick" id="e-fw-inet" d="M950,355 C 950,250 985,190 985,118"/>
+      <path class="edge dash" id="e-fw-deny" d="M1045,355 C 1045,250 1095,190 1095,118"/>
+
+      <!-- edge labels -->
+      <text class="elbl" id="l-admin" data-e="e-admin-bastion" x="242" y="258">mgmt access</text>
+      <text class="elbl" id="l-bv" data-e="e-bastion-vm" x="400" y="420" text-anchor="middle">SSH</text>
+      <text class="elbl" id="l-vf" data-e="e-vm-fw" x="765" y="420" text-anchor="middle">proxy</text>
+      <text class="elbl" id="l-fi" data-e="e-fw-inet" x="955" y="232" text-anchor="end">SNAT egress</text>
+      <text class="elbl" id="l-fd" data-e="e-fw-deny" x="1085" y="232" text-anchor="start">HTTP 470 deny</text>
+
+      <!-- external: admin -->
+      <g class="node ext mgmt" data-k="admin">
+        <rect x="110" y="58" width="240" height="60" rx="10"/>
+        <text class="t" x="132" y="84">Admin / Operator</text>
+        <text class="m" x="132" y="104">portal &middot; az CLI</text>
+      </g>
+      <!-- external: internet -->
+      <g class="node ext" data-k="internet">
+        <rect x="900" y="58" width="280" height="60" rx="10"/>
+        <text class="t" x="922" y="84">Internet</text>
+        <text class="m" x="922" y="104">allowed FQDNs only</text>
+      </g>
+
+      <!-- bastion -->
+      <g class="node mgmt" data-k="bastion">
+        <rect x="110" y="384" width="240" height="92" rx="10"/>
+        <text class="t" x="132" y="416">Azure Bastion</text>
+        <text class="m" x="132" y="438">bastion-fwlab &middot; Basic</text>
+        <text class="m" x="132" y="456">browser SSH, no public VM IP</text>
+      </g>
+
+      <!-- client vm -->
+      <g class="node client" data-k="vm">
+        <rect x="450" y="372" width="260" height="116" rx="10"/>
+        <text class="t" x="472" y="404">Client VM</text>
+        <text class="m" x="472" y="426">vm-client-fwlab</text>
+        <text class="m" x="472" y="444">Ubuntu 22.04 &middot; Standard_B2s</text>
+        <text class="m" x="472" y="462">http_proxy / https_proxy set</text>
+      </g>
+
+      <!-- firewall -->
+      <g class="node fw" data-k="fw">
+        <rect x="875" y="355" width="230" height="150" rx="10"/>
+        <text class="t" x="897" y="387">Azure Firewall</text>
+        <text class="k" x="897" y="407">explicit proxy</text>
+        <text class="m" x="897" y="429">afw-fwlab &middot; Standard</text>
+        <text class="m" x="897" y="447">HTTP :8080 / HTTPS :8443</text>
+        <text class="m" x="897" y="465">private IP 10.0.0.4</text>
+        <text class="m" x="897" y="483">application rule allowlist</text>
+      </g>
+
+      <!-- firewall policy (info node) -->
+      <g class="node fw" data-k="policy">
+        <rect x="875" y="545" width="230" height="86" rx="10"/>
+        <text class="t" x="897" y="577">fwpol-fwlab</text>
+        <text class="m" x="897" y="599">explicitProxy enabled</text>
+        <text class="m" x="897" y="617">app rule: allowed FQDNs</text>
+      </g>
+      <path class="edge dash" id="e-fw-policy" d="M990,505 L990,545"/>
+    </svg>
+
+    <div class="card" id="detail">
+      <div class="dt" id="d-title">Click a node</div>
+      <div class="dm" id="d-meta">explore the lab</div>
+      <div class="db" id="d-body">Every box is clickable. Use the flow chips up top to trace an allowed request, a denied request, or the management path.</div>
+    </div>
+
+    <div class="card" id="flowcap">
+      <div class="fn" id="f-name"></div>
+      <ol id="f-steps"></ol>
+    </div>
+  </div>
+
+<script>
+const DETAIL = {
+  admin:    { t:"Admin / Operator", m:"external · portal + az CLI", b:"Deploys the lab and manages the VM. Reaches the private client VM only through <b>Azure Bastion</b> - the VM has no public IP." },
+  internet: { t:"Internet", m:"external · destination", b:"Outbound destinations. Only FQDNs on the firewall's <b>application rule</b> allowlist are reachable; everything else is denied at the proxy with <code>HTTP 470</code>." },
+  bastion:  { t:"Azure Bastion", m:"bastion-fwlab · Basic SKU", b:"Managed jump host for browser-based SSH into the client VM. Keeps the workload subnet free of public IPs and inbound NSG holes." },
+  vm:       { t:"Client VM", m:"vm-client-fwlab · Ubuntu 22.04 · B2s", b:"The test client. To use the proxy it must be <b>configured</b> for it (<code>http_proxy</code>/<code>https_proxy</code> pointing at <code>10.0.0.4:8080/8443</code>), or via a PAC file. No public IP." },
+  fw:       { t:"Azure Firewall (Standard)", m:"afw-fwlab · explicit proxy ON", b:"Clients point their proxy at the firewall's <b>private IP</b> on :8080 (HTTP) / :8443 (HTTPS) and egress directly - no UDR. Traffic must be permitted by an <b>application rule</b> (network rules do not work for proxied traffic)." },
+  policy:   { t:"Firewall policy", m:"fwpol-fwlab", b:"Holds <code>explicitProxy</code> config (ports must differ) and the application rule collection with the allowed FQDN list. Edit the allowlist and redeploy to permit more destinations." },
+};
+const FLOWS = {
+  allow: {
+    name:"Allowed request - through the proxy",
+    tone:"go",
+    edges:["e-vm-fw","e-fw-inet"],
+    nodes:["vm","fw","internet"],
+    steps:["VM has <code>https_proxy=http://10.0.0.4:8443</code> set","Request hits the firewall private IP on the proxy port","FQDN matches an <b>application rule</b> → SNAT egress to the internet","Response returns; <code>curl</code> sees the firewall's public IP"]
+  },
+  deny: {
+    name:"Denied request - not on the allowlist",
+    tone:"stop",
+    edges:["e-vm-fw","e-fw-deny"],
+    nodes:["vm","fw"],
+    steps:["VM sends a proxied request to a non-allowed FQDN","No application rule matches","Firewall refuses the CONNECT: <code>HTTP 470 from proxy</code> (curl exit 56)"]
+  },
+  mgmt: {
+    name:"Management path - operator to VM",
+    tone:"go",
+    edges:["e-admin-bastion","e-bastion-vm"],
+    nodes:["admin","bastion","vm"],
+    steps:["Operator opens the VM in the portal → <b>Connect via Bastion</b>","Bastion brokers browser SSH as <code>azureuser</code>","No public IP, no inbound NSG rule on the workload subnet"]
+  }
+};
+
+const stage = document.getElementById('stage');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('.chip');
+
+function setFlow(key) {
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit'));
+  elbls.forEach(l => l.classList.remove('lit'));
+  nodes.forEach(n => n.classList.remove('lit'));
+  const cap = document.getElementById('flowcap');
+  stage.classList.remove('tone-go','tone-stop');
+  if (key === 'all') { stage.classList.remove('flowing'); cap.classList.remove('show'); return; }
+  const f = FLOWS[key];
+  stage.classList.add('flowing');
+  if (f.tone === 'go') stage.classList.add('tone-go');
+  else if (f.tone === 'stop') stage.classList.add('tone-stop');
+  f.edges.forEach(id => document.getElementById(id)?.classList.add('lit'));
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) l.classList.add('lit'); });
+  f.nodes.forEach(k => document.querySelector(`.node[data-k="${k}"]`)?.classList.add('lit'));
+  document.getElementById('f-name').textContent = f.name;
+  document.getElementById('f-steps').innerHTML = f.steps.map(s => `<li>${s}</li>`).join('');
+  cap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+nodes.forEach(n => n.addEventListener('click', () => {
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  document.getElementById('d-body').innerHTML = d.b;
+}));
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const dark = !document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+});
+</script>
+</body>
+</html>

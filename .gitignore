@@ -1,0 +1,5 @@
+# secrets / local-only
+*password*.txt
+*.parameters.local.json
+.env
+infra/*.json
