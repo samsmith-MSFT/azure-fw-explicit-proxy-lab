@@ -84,13 +84,13 @@
   .node.mgmt rect { fill:var(--olive-soft); stroke:var(--olive); }
   .node.ext rect { stroke-dasharray:6 3; }
 
-  .edge { stroke:var(--muted); stroke-width:1.6; fill:none; marker-end:url(#a-mut); transition:opacity .2s ease, stroke .2s ease; }
+  .edge { stroke:var(--muted); stroke-width:1.6; fill:none; marker-end:url(#a-mut); opacity:0; transition:opacity .25s ease, stroke .2s ease; }
   .edge.dash { stroke-dasharray:5 4; }
   .edge.thick { stroke-width:2.2; }
-  .elbl { font-family:var(--mono); font-size:10.5px; fill:var(--muted); transition:opacity .2s ease; }
+  .elbl { font-family:var(--mono); font-size:10.5px; fill:var(--muted); opacity:0; transition:opacity .25s ease; }
 
-  .stage.flowing .edge { opacity:0.13; }
-  .stage.flowing .elbl { opacity:0.13; }
+  .stage.flowing .edge { opacity:0; }
+  .stage.flowing .elbl { opacity:0; }
   .stage.flowing .node { opacity:0.30; }
   .stage.flowing .zone { opacity:0.45; }
   .stage.flowing { --flow:var(--blue); }
